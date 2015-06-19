@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+
+import argparse
+import contextlib
+import glob
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+@contextlib.contextmanager
+def tmpdir(keeptemp=False):
+  d = tempfile.mkdtemp()
+  try:
+    yield d
+  finally:
+    if not keeptemp:
+      shutil.rmtree(d)
+
+def needs_mangling(name):
+  if name.startswith("python"):
+    return False
+  return True
+
+def gen_requires(reqfile):
+  requires = []
+  for l in file(reqfile).readlines():
+    l = l.strip()
+    l = l.replace(" ", "")
+    if not l:
+      continue
+    verdelim = [ l.find(x) for x in ">=<" if l.find(x) != -1 ]
+    if verdelim:
+      verdelim = min(verdelim)
+      pkg = l[:verdelim]
+      otherverdelim = max([ l.rfind(x) for x in ">=<" if l.rfind(x) != -1 ])
+      ver = l[otherverdelim+1:]
+      inbetween = l[verdelim:otherverdelim+1]
+      l = pkg + " " + inbetween + " " + ver
+    requires.append(l)
+  return requires
+
+def mangle_specfile(path, requires):
+  unmangled_name = None
+  mangled_name = None
+  names_defined = False
+  lines = file(path, "rb").readlines()
+  for n, line in enumerate(lines[:]):
+    if line.startswith("%define name "):
+      unmangled_name = line[len("%define name "):]
+      if needs_mangling(unmangled_name):
+        mangled_name = "python-%s" % unmangled_name
+      else:
+        mangled_name = unmangled_name
+      lines[n] = "%define unmangled_name " + unmangled_name + "%define mangled_name " + mangled_name 
+    elif line.startswith("%define release "):
+      if "%{?dist}" not in line:
+        lines[n] = "%define release " + line[len("%define release "):-1] + "%{?dist}" + "\n"
+    elif line.startswith("Name: "):
+      lines[n] = lines[n].replace("%{name}", "%{mangled_name}")
+      if requires:
+        requires = [ "python-%s" % x if needs_mangling(x) else x for x in requires ]
+        requires = "Requires: %s\n" % ", ".join(requires)
+        lines[n] = lines[n] + requires
+      names_defined = True
+    elif names_defined:
+      lines[n] = lines[n].replace("%{name}", "%{unmangled_name}")
+  out = file(path, "wb")
+  out.write("".join(lines))
+  out.flush()
+  out.close()
+
+def run(cmd, cwd=None):
+  p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+  stdout, _ = p.communicate()
+  ret = p.wait()
+  ret = ret == 0
+  return ret, stdout
+
+def package(path, outputdir, keeptemp):
+  if not os.path.isdir(outputdir):
+    raise ValueError("%r must be a directory and must exist" % outputdir)
+  with tmpdir(keeptemp) as td:
+    if keeptemp:
+      print "Temporary work directory:", td
+    if path.endswith(".tar.gz"):
+      success, output = run(["tar", "-zx", "-C", td, "-f", path])
+      if not success:
+        print >> sys.stderr, "Error uncompressing:\n", output
+        return 8
+    elif path.endswith(".zip"):
+      success, output = run(["unzip", "-d", td, path])
+      if not success:
+        print >> sys.stderr, "Error uncompressing:\n", output
+        return 8
+    else:
+      assert 0, "Do not know how to handle file type of %r" % path
+    sourcepath = glob.glob(os.path.join(td, "*"))[0]
+    success, output = run(["python", "setup.py", "bdist_rpm"], cwd=sourcepath)
+    if not success:
+      print >> sys.stderr, "Error in bdist_rpm:\n", output
+      return 10
+    requiresfile = glob.glob(os.path.join(td, "*", "*.egg-info", "requires.txt"))[0]
+    requires = gen_requires(requiresfile)
+    sourcerpm = glob.glob(os.path.join(td, "*", "dist", "*.src.rpm"))[0]
+    def rpm(*args):
+      return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
+    def rpmbuild(*args):
+      return run(["rpmbuild", "--define", "%%_topdir %s/RPM" % td] + list(args))
+    success, output = rpm("-ivh", sourcerpm)
+    if not success:
+      print >> sys.stderr, "Error installing distutils source RPM:\n", output
+      return 12
+    specfile = glob.glob(os.path.join(td, "RPM", "SPECS", "*.spec"))[0]
+    mangle_specfile(specfile, requires)
+    success, output = rpmbuild("-bs", specfile)
+    if not success:
+      print >> sys.stderr, "Error constructing final source RPM:\n", output
+      return 14
+    srpm = glob.glob(os.path.join(td, "RPM", "SRPMS", "*.src.rpm"))[0]
+    success, output = rpmbuild("--rebuild", srpm)
+    if not success:
+      print >> sys.stderr, "Error rebuilding final source RPM:\n", output
+      return 16
+    brpm = glob.glob(os.path.join(td, "RPM", "RPMS", "*", "*.rpm"))[0]
+    success, output = rpm("-qp", "--provides", brpm)
+    print "Package %s provides:" % os.path.basename(brpm)
+    for line in output.splitlines(False):
+      print "*", line
+    success, output = rpm("-qp", "--requires", brpm)
+    print "Package %s requires:" % os.path.basename(brpm)
+    for line in output.splitlines(False):
+      print "*", line
+    destfile = os.path.join(outputdir, os.path.basename(srpm))
+    if os.path.exists(destfile):
+      print >> sys.stderr, "Error: not replacing %r" % destfile
+      return 18
+    shutil.move(srpm, destfile)
+
+def main():
+  parser = argparse.ArgumentParser(description="Turn downloaded PyPI packages into source RPMs")
+  parser.add_argument('--outputdir',
+    dest="outputdir",
+    help="Output directory to store the source RPMs into (must exist, default: current directory)",
+    action="store",
+    default=os.path.curdir,
+  )
+  parser.add_argument('--keeptemp',
+    dest="keeptemp",
+    help="Print and keep the temporary work directory",
+    action="store_true",
+    default=False,
+  )
+  parser.add_argument('sources',
+    metavar="SOURCE",
+    type=str,
+    nargs='+',
+    help="Source tarballs, zip files and wheels",
+  )
+  args = parser.parse_args()
+  for filename in args.sources:
+    ret = package(filename, args.outputdir, args.keeptemp)
+    if ret:
+      sys.exit(ret)
+
+if __name__ == "__main__":
+  main()
