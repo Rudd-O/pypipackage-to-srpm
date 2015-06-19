@@ -18,10 +18,12 @@ def tmpdir(keeptemp=False):
     if not keeptemp:
       shutil.rmtree(d)
 
-def needs_mangling(name):
+def mangle_name(name):
   if name.startswith("python"):
-    return False
-  return True
+    return name
+  if name.startswith("py"):
+    return "python-" + name[2:]
+  return "python-" + name
 
 def gen_requires(reqfile):
   requires = []
@@ -30,6 +32,8 @@ def gen_requires(reqfile):
     l = l.replace(" ", "")
     if not l:
       continue
+    if l.startswith("["):
+        break
     verdelim = [ l.find(x) for x in ">=<" if l.find(x) != -1 ]
     if verdelim:
       verdelim = min(verdelim)
@@ -49,10 +53,7 @@ def mangle_specfile(path, requires):
   for n, line in enumerate(lines[:]):
     if line.startswith("%define name "):
       unmangled_name = line[len("%define name "):]
-      if needs_mangling(unmangled_name):
-        mangled_name = "python-%s" % unmangled_name
-      else:
-        mangled_name = unmangled_name
+      mangled_name = mangle_name(unmangled_name)
       lines[n] = "%define unmangled_name " + unmangled_name + "%define mangled_name " + mangled_name 
     elif line.startswith("%define release "):
       if "%{?dist}" not in line:
@@ -60,7 +61,7 @@ def mangle_specfile(path, requires):
     elif line.startswith("Name: "):
       lines[n] = lines[n].replace("%{name}", "%{mangled_name}")
       if requires:
-        requires = [ "python-%s" % x if needs_mangling(x) else x for x in requires ]
+        requires = [ mangle_name(x) for x in requires ]
         requires = "Requires: %s\n" % ", ".join(requires)
         lines[n] = lines[n] + requires
       names_defined = True
