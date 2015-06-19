@@ -101,8 +101,11 @@ def package(path, outputdir, keeptemp):
     if not success:
       print >> sys.stderr, "Error in bdist_rpm:\n", output
       return 10
-    requiresfile = glob.glob(os.path.join(td, "*", "*.egg-info", "requires.txt"))[0]
-    requires = gen_requires(requiresfile)
+    try:
+        requiresfile = glob.glob(os.path.join(td, "*", "*.egg-info", "requires.txt"))[0]
+        requires = gen_requires(requiresfile)
+    except IndexError:
+        requires = []
     sourcerpm = glob.glob(os.path.join(td, "*", "dist", "*.src.rpm"))[0]
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
