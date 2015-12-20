@@ -21,6 +21,9 @@ def tmpdir(keeptemp=False):
 def mangle_name(name):
   if name.startswith("python"):
     return name
+  # Special case pytz.
+  if name.startswith("pytz"):
+    return "python2-" + name
   if name.startswith("py"):
     return "python-" + name[2:]
   return "python-" + name
