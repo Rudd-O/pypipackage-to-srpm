@@ -48,7 +48,7 @@ def gen_requires(reqfile):
     requires.append(l)
   return requires
 
-def mangle_specfile(path, requires):
+def mangle_specfile(path, requires, patches):
   unmangled_name = None
   mangled_name = None
   names_defined = False
@@ -68,21 +68,31 @@ def mangle_specfile(path, requires):
         requires = "Requires: %s\n" % ", ".join(requires)
         lines[n] = lines[n] + requires
       names_defined = True
-    elif names_defined:
+    elif line.startswith("Source") and patches:
+        extralines = []
+        for patchn, patch in enumerate(patches):
+            line = line + "Patch%d: %s\n" % (patchn, os.path.basename(patch))
+        lines[n] = line
+    elif line.startswith("%setup") and patches:
+      for patchn, _ in enumerate(patches):
+        line = line + "%%patch%d\n" % patchn
+      lines[n] = line
+    if names_defined:
       lines[n] = lines[n].replace("%{name}", "%{unmangled_name}")
   out = file(path, "wb")
   out.write("".join(lines))
   out.flush()
   out.close()
 
-def run(cmd, cwd=None):
-  p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+def run(cmd, cwd=None, stdin=None):
+  p = subprocess.Popen(cmd, cwd=cwd, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
   stdout, _ = p.communicate()
   ret = p.wait()
   ret = ret == 0
   return ret, stdout
 
-def package(path, outputdir, keeptemp):
+def package(path, outputdir, keeptemp, patches=None):
+  patches = [] if patches is None else patches
   if not os.path.isdir(outputdir):
     raise ValueError("%r must be a directory and must exist" % outputdir)
   with tmpdir(keeptemp) as td:
@@ -101,6 +111,9 @@ def package(path, outputdir, keeptemp):
     else:
       assert 0, "Do not know how to handle file type of %r" % path
     sourcepath = glob.glob(os.path.join(td, "*"))[0]
+    for patch in patches:
+        pf = open(patch)
+        success, output = run(['patch', '-p0'], cwd=sourcepath, stdin=pf)
     success, output = run(["python", "setup.py", "bdist_rpm"], cwd=sourcepath)
     if not success:
       print >> sys.stderr, "Error in bdist_rpm:\n", output
@@ -120,7 +133,10 @@ def package(path, outputdir, keeptemp):
       print >> sys.stderr, "Error installing distutils source RPM:\n", output
       return 12
     specfile = glob.glob(os.path.join(td, "RPM", "SPECS", "*.spec"))[0]
-    mangle_specfile(specfile, requires)
+    for patch in patches:
+        shutil.copyfile(patch, os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)))
+    shutil.copyfile(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
+    mangle_specfile(specfile, requires, patches)
     success, output = rpmbuild("-bs", specfile)
     if not success:
       print >> sys.stderr, "Error constructing final source RPM:\n", output
@@ -159,17 +175,22 @@ def main():
     action="store_true",
     default=False,
   )
-  parser.add_argument('sources',
+  parser.add_argument('source',
     metavar="SOURCE",
     type=str,
-    nargs='+',
-    help="Source tarballs, zip files and wheels",
+    nargs=1,
+    help="Source tarball, zip file or wheel",
+  )
+  parser.add_argument('patches',
+    metavar="PATCHES",
+    type=str,
+    nargs='*',
+    help="Plain text diff-formatted patches",
   )
   args = parser.parse_args()
-  for filename in args.sources:
-    ret = package(filename, args.outputdir, args.keeptemp)
-    if ret:
-      sys.exit(ret)
+  ret = package(args.source[0], args.outputdir, args.keeptemp, args.patches)
+  if ret:
+    sys.exit(ret)
 
 if __name__ == "__main__":
   main()
