@@ -48,7 +48,7 @@ def gen_requires(reqfile):
     requires.append(l)
   return requires
 
-def mangle_specfile(path, requires, patches):
+def mangle_specfile(path, requires, buildrequires, patches):
   unmangled_name = None
   mangled_name = None
   names_defined = False
@@ -67,6 +67,9 @@ def mangle_specfile(path, requires, patches):
         requires = [ mangle_name(x) for x in requires ]
         requires = "Requires: %s\n" % ", ".join(requires)
         lines[n] = lines[n] + requires
+      if buildrequires:
+        buildrequires = "BuildRequires: %s\n" % ", ".join(buildrequires)
+        lines[n] = lines[n] + buildrequires
       names_defined = True
     elif line.startswith("Source") and patches:
         extralines = []
@@ -126,6 +129,14 @@ def package(path, outputdir, keeptemp, patches=None):
         requires = gen_requires(requiresfile)
     except IndexError:
         requires = []
+    success, findcfiles = run(["find", td, "-name", "*.c", "-print0"])
+    if not success:
+      print >> sys.stderr, "Error in finding C files:\n", output
+      return 10
+    if findcfiles:
+      buildrequires = ["python-devel"]
+    else:
+      buildrequires = []
     sourcerpm = glob.glob(os.path.join(td, "*", "dist", "*.src.rpm"))[0]
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
@@ -139,7 +150,7 @@ def package(path, outputdir, keeptemp, patches=None):
     for patch in patches:
         shutil.copyfile(patch, os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)))
     shutil.copyfile(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
-    mangle_specfile(specfile, requires, patches)
+    mangle_specfile(specfile, requires, buildrequires, patches)
     success, output = rpmbuild("-bs", specfile)
     if not success:
       print >> sys.stderr, "Error constructing final source RPM:\n", output
