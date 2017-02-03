@@ -129,6 +129,7 @@ def package(path, outputdir, keeptemp, patches=None):
         requires = gen_requires(requiresfile)
     except IndexError:
         requires = []
+    print >> sys.stderr, "Requires: %s" % requires
     success, findcfiles = run(["find", td, "-name", "*.c", "-print0"])
     if not success:
       print >> sys.stderr, "Error in finding C files:\n", output
@@ -137,6 +138,7 @@ def package(path, outputdir, keeptemp, patches=None):
       buildrequires = ["python-devel"]
     else:
       buildrequires = []
+    print >> sys.stderr, "BuildRequires: %s" % buildrequires
     sourcerpm = glob.glob(os.path.join(td, "*", "dist", "*.src.rpm"))[0]
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
