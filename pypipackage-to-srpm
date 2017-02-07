@@ -19,6 +19,8 @@ def tmpdir(keeptemp=False):
       shutil.rmtree(d)
 
 def mangle_name(name):
+  if name == "BeautifulSoup4":
+      name = "beautifulsoup4"
   if name.startswith("python"):
     return name
   # Special case pytz.
