@@ -22,6 +22,9 @@ def tmpdir(keeptemp=False):
       shutil.rmtree(d)
 
 def mangle_name(name):
+  # special case dnspython.
+  if name == "dnspython":
+      return "python%s-dns" % (sys.version_info.major, )
   if name == "BeautifulSoup4":
       name = "beautifulsoup4"
   if name.startswith("python"):
