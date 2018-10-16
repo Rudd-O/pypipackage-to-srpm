@@ -33,7 +33,7 @@ def mangle_name(name):
   if name.startswith("pytz"):
     return "python%s-%s" % (sys.version_info.major, name)
   if name.startswith("PySocks"):
-    return "python%s-%s" % (sys.version_info.major, name)
+    return "python%s-%s" % (sys.version_info.major, name.lower())
   if name.startswith("py"):
     return "python%s-%s" % (sys.version_info.major, name[2:])
   return "python%s-%s" % (sys.version_info.major, name)
