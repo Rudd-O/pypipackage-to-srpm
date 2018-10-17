@@ -149,12 +149,13 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         pf = open(patch)
         success, output = run(['patch', '-p0'], cwd=sourcepath, stdin=pf)
         if not success:
-          print("Error in patching %s:\n" % patch, output, file=sys.stderr)
+          print("Error in patching %s:\n" % patch, file=sys.stderr)
+          print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
           return 10
     success, output = run([sys.executable, "setup.py", "bdist_rpm"], cwd=sourcepath)
     if not success:
-      print("Error in bdist_rpm:)", file=sys.stderr)
-      print(output, file=sys.stderr)
+      print("Error in bdist_rpm:", file=sys.stderr)
+      print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
       return 10
     try:
         requiresfile = glob.glob(os.path.join(td, "*", "*.egg-info", "requires.txt"))[0]
@@ -164,7 +165,8 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
     print("Requires: %s" % requires, file=sys.stderr)
     success, findcfiles = run(["find", td, "-name", "*.c", "-print0"])
     if not success:
-      print("Error in finding C files:\n", output, file=sys.stderr)
+      print("Error in finding C files:", file=sys.stderr)
+      print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
       return 10
     if findcfiles:
       buildrequires = ["python-devel"]
