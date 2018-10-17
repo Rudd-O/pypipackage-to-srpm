@@ -169,7 +169,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
       print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
       return 10
     if findcfiles:
-      buildrequires = ["python-devel"]
+      buildrequires = ["python%s-devel" % (sys.version_info.major, )]
     else:
       buildrequires = []
     print("BuildRequires: %s" % buildrequires, file=sys.stderr)
