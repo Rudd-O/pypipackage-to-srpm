@@ -12,6 +12,13 @@ import sys
 import tarfile
 import tempfile
 
+
+sys.path.append(os.path.dirname(__file__))
+
+
+import pypipackagetosrpmmod as mod
+
+
 @contextlib.contextmanager
 def tmpdir(keeptemp=False):
   d = tempfile.mkdtemp()
@@ -21,42 +28,6 @@ def tmpdir(keeptemp=False):
     if not keeptemp:
       shutil.rmtree(d)
 
-def mangle_name(name):
-  # special case dnspython.
-  if name == "dnspython":
-      return "python%s-dns" % (sys.version_info.major, )
-  if name == "BeautifulSoup4":
-      name = "beautifulsoup4"
-  if name.startswith("python"):
-    return name
-  # Special case pytz.
-  if name.startswith("pytz"):
-    return "python%s-%s" % (sys.version_info.major, name)
-  if name.startswith("PySocks") or name.startswith("pyaes"):
-    return "python%s-%s" % (sys.version_info.major, name.lower())
-  if name.startswith("py"):
-    return "python%s-%s" % (sys.version_info.major, name[2:])
-  return "python%s-%s" % (sys.version_info.major, name)
-
-def gen_requires(reqfile):
-  requires = []
-  for l in open(reqfile).readlines():
-    l = l.strip()
-    l = l.replace(" ", "")
-    if not l:
-      continue
-    if l.startswith("["):
-        break
-    verdelim = [ l.find(x) for x in ">=<" if l.find(x) != -1 ]
-    if verdelim:
-      verdelim = min(verdelim)
-      pkg = l[:verdelim]
-      otherverdelim = max([ l.rfind(x) for x in ">=<" if l.rfind(x) != -1 ])
-      ver = l[otherverdelim+1:]
-      inbetween = l[verdelim:otherverdelim+1]
-      l = pkg + " " + inbetween + " " + ver
-    requires.append(l)
-  return requires
 
 def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
   unmangled_name = None
@@ -66,7 +37,7 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
   for n, line in enumerate(lines[:]):
     if line.startswith("%define name "):
       unmangled_name = line[len("%define name "):]
-      mangled_name = unmangled_name if skip_mangling_name else mangle_name(unmangled_name)
+      mangled_name = unmangled_name if skip_mangling_name else mod.mangle_name(unmangled_name)
       lines[n] = "%define unmangled_name " + unmangled_name + "%define mangled_name " + mangled_name 
     elif line.startswith("%define release "):
       if "%{?dist}" not in line:
@@ -74,7 +45,6 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
     elif line.startswith("Name: "):
       lines[n] = lines[n].replace("%{name}", "%{mangled_name}")
       if requires:
-        requires = [ mangle_name(x) for x in requires ]
         requires = "Requires: %s\n" % ", ".join(requires)
         lines[n] = lines[n] + requires
       if buildrequires:
@@ -159,9 +129,11 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
       return 10
     try:
         requiresfile = glob.glob(os.path.join(td, "*", "*.egg-info", "requires.txt"))[0]
-        requires = gen_requires(requiresfile)
+        orgrequires = open(requiresfile).readlines()
+        requires = mod.gen_requires(orgrequires)
     except IndexError:
         requires = []
+    print("Original requires: %s" % requires, file=sys.stderr)
     print("Requires: %s" % requires, file=sys.stderr)
     success, findcfiles = run(["find", td, "-name", "*.c", "-print0"])
     if not success:
