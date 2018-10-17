@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+
+import os, sys, subprocess
+
+
+subprocess.check_call('mkdir -p sources rpms'.split())
+args = sys.argv[1:]
+
+alreadydone = set()
+
+while args:
+    arg, args = args[0], args[1:]
+    if arg in alreadydone:
+        continue
+    print "Processing", arg
+    out = subprocess.check_output(['pip', 'download', '-vvv', '-d', 'sources/', '--no-binary', ':all:', '--no-deps', arg])
+    try:
+        url = [x[len("  Downloading from URL "):].strip() for x in out.splitlines() if x.startswith("  Downloading from URL ")][0]
+        saved = [x[len("  Saved "):].strip() for x in out.splitlines() if x.startswith("  Saved ")][0]
+    except IndexError:
+        saved = [x[len("  File was already downloaded "):].strip() for x in out.splitlines() if x.startswith("  File was already downloaded ")][0]
+        url = None
+    if url:
+        print "URL", url
+    try:
+        out = subprocess.check_output(['./pypipackage-to-srpm', '--outputdir=rpms/', saved], stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError, e:
+        if "Error: not replacing " in e.output:
+            print "Already done", arg
+            out = e.output
+        else:
+            print e.output
+            raise
+    try:
+        exec "reqs = " + [x[len("Original requires: "):] for x in out.splitlines() if x.startswith("Original requires: ")][0]
+    except IndexError:
+        assert 0, out
+    alreadydone.add(arg)
+    args.extend(reqs)
