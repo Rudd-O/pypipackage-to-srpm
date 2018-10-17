@@ -132,8 +132,9 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         orgrequires = open(requiresfile).readlines()
         requires = mod.gen_requires(orgrequires)
     except IndexError:
+        orgrequires = []
         requires = []
-    print("Original requires: %s" % requires, file=sys.stderr)
+    print("Original requires: %s" % orgrequires, file=sys.stderr)
     print("Requires: %s" % requires, file=sys.stderr)
     success, findcfiles = run(["find", td, "-name", "*.c", "-print0"])
     if not success:
