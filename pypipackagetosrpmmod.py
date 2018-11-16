@@ -31,7 +31,7 @@ def gen_requires(in_reqs):
     toks = l.split(",")
     pkg = None
     for tok in toks:
-        seps = [">=", "<=", ">", "<", "==", None]
+        seps = [">=", "<=", ">", "<", "==", "~=", None]
         ver = None
         for sep in seps:
             if sep is None:
@@ -39,6 +39,8 @@ def gen_requires(in_reqs):
             elif sep in tok:
                 tok, ver = tok.split(sep)
                 tok, ver = tok.strip(), ver.strip()
+                if sep == "~=":
+                    sep = ">="
                 break
         assert not (ver is None and sep is not None)
         assert not (sep is None and ver is not None)

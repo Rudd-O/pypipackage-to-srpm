@@ -15,6 +15,7 @@ class TestRequires(unittest.TestCase):
         in_ = """httplib2<1dev,>=0.9.2
 google-auth>=1.4.1
 google-auth-httplib2>=0.0.3
+someshit~=0.0.4
 six<2dev,>=1.6.1
 uritemplate<4dev,>=3.0.0""".splitlines()
         exp_ = [
@@ -22,6 +23,7 @@ uritemplate<4dev,>=3.0.0""".splitlines()
             "python2-httplib2 >= 0.9.2",
             "python2-google-auth >= 1.4.1",
             "python2-google-auth-httplib2 >= 0.0.3",
+            "python2-someshit >= 0.0.4",
             "python2-six < 2dev",
             "python2-six >= 1.6.1",
             "python2-uritemplate < 4dev",
