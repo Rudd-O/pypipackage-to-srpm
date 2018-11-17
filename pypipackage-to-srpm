@@ -12,6 +12,16 @@ import sys
 import tarfile
 import tempfile
 
+try:
+    import ConfigParser as configparser
+except ImportError:
+    import configparser
+
+try:
+    from pipes import quote
+except ImportError:
+    from shlex import quote
+
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -57,8 +67,8 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
             line = line + "Patch%d: %s\n" % (patchn, os.path.basename(patch))
         lines[n] = line
     elif line.startswith("%setup") and patches:
-      for patchn, _ in enumerate(patches):
-        line = line + "%%patch%d\n" % patchn
+      for patch in patches:
+        line = line + "patch -p0 --binary < %%{_sourcedir}/%s\n" % quote(os.path.basename(patch))
       lines[n] = line
     if names_defined:
       lines[n] = lines[n].replace("%{name}", "%{unmangled_name}")
@@ -125,12 +135,13 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
               text = text.replace(b"\n", b"\r\n")
           pf.write(text)
           pf.flush()
-          success, output = run(['patch', '-p0'], cwd=sourcepath, stdin=pf)
+          pf.seek(0)
+          success, output = run(['patch', '-p0', '--binary'], cwd=sourcepath, stdin=pf)
         if not success:
           print("Error in patching %s:\n" % patch, file=sys.stderr)
           print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
           return 10
-    success, output = run([sys.executable, "setup.py", "bdist_rpm"], cwd=sourcepath)
+    success, output = run([sys.executable, "setup.py", "bdist_rpm", "--spec-only"], cwd=sourcepath)
     if not success:
       print("Error in bdist_rpm:", file=sys.stderr)
       print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
@@ -153,17 +164,23 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
       buildrequires = ["python%s-devel" % (sys.version_info.major, )]
     else:
       buildrequires = []
+    setupcfg = configparser.ConfigParser()
+    try:
+        setupcfgf = glob.glob(os.path.join(td, "*", "setup.cfg"))[0]
+        setupcfg.read(setupcfgf)
+        breq = setupcfg['bdist_rpm']['build_requires']
+    except (IOError, OSError, KeyError, IndexError):
+        breq = ""
+    buildrequires.extend([x.strip() for x in breq.split(",")])
     print("BuildRequires: %s" % buildrequires, file=sys.stderr)
-    sourcerpm = glob.glob(os.path.join(td, "*", "dist", "*.src.rpm"))[0]
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
     def rpmbuild(*args):
       return run(["rpmbuild", "--define", "%%_topdir %s/RPM" % td] + list(args))
-    success, output = rpm("-ivh", sourcerpm)
-    if not success:
-      print("Error installing distutils source RPM:\n%s" % (output, ), file=sys.stderr)
-      return 12
-    specfile = glob.glob(os.path.join(td, "RPM", "SPECS", "*.spec"))[0]
+    specfile = glob.glob(os.path.join(td, "*", "dist", "*.spec"))[0]
+    rpmsourcesdir = os.path.join(td, "RPM", "SOURCES")
+    if not os.path.isdir(rpmsourcesdir):
+        os.makedirs(rpmsourcesdir)
     for patch in patches:
         text = open(patch, "rb").read()
         if ".unix2dos." in patch:
