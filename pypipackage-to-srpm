@@ -167,7 +167,10 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
     for patch in patches:
         text = open(patch, "rb").read()
         if ".unix2dos." in patch:
+          try:
             text = text.replace("\n", "\r\n")
+          except TypeError:
+            text = text.replace(b"\n", b"\r\n")
         open(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
     remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
     mangle_specfile(specfile, requires, buildrequires, skip_mangling_name, patches)
