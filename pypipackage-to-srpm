@@ -117,7 +117,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         del new_sourcepath
     for patch in patches:
         pf = open(patch)
-        success, output = run(['patch', '-p0'], cwd=sourcepath, stdin=pf)
+        success, output = run(['patch', '-p0', '--ignore-whitespace'], cwd=sourcepath, stdin=pf)
         if not success:
           print("Error in patching %s:\n" % patch, file=sys.stderr)
           print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
