@@ -165,7 +165,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         text = open(patch, "rb").read()
         if ".unix2dos." in patch:
             text = text.replace("\n", "\r\n")
-        file(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
+        open(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
     remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
     mangle_specfile(specfile, requires, buildrequires, skip_mangling_name, patches)
     success, output = rpmbuild("-bs", specfile)
