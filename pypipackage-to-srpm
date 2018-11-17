@@ -119,7 +119,10 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         text = open(patch, "rb").read()
         with tempfile.NamedTemporaryFile() as pf:
           if ".unix2dos." in patch:
-            text = text.replace("\n", "\r\n")
+            try:
+              text = text.replace("\n", "\r\n")
+            except TypeError:
+              text = text.replace(b"\n", b"\r\n")
           pf.write(text)
           pf.flush()
           success, output = run(['patch', '-p0'], cwd=sourcepath, stdin=pf)
