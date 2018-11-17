@@ -51,7 +51,9 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
       lines[n] = "%define unmangled_name " + unmangled_name + "%define mangled_name " + mangled_name 
     elif line.startswith("%define release "):
       if "%{?dist}" not in line:
-        lines[n] = "%define release " + line[len("%define release "):-1] + "%{?dist}" + "\n"
+        line = "%define release " + line[len("%define release "):-1] + "%{?dist}" + "\n"
+      line = line.replace("%define release 1", "%define release %{?build_number}%{?!build_number:1}")
+      lines[n] = line
     elif line.startswith("Name: "):
       lines[n] = lines[n].replace("%{name}", "%{mangled_name}")
       if requires:
