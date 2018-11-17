@@ -162,7 +162,10 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
       return 12
     specfile = glob.glob(os.path.join(td, "RPM", "SPECS", "*.spec"))[0]
     for patch in patches:
-        shutil.copyfile(patch, os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)))
+        text = open(patch, "rb").read()
+        if ".unix2dos." in patch:
+            text = text.replace("\n", "\r\n")
+        file(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
     remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
     mangle_specfile(specfile, requires, buildrequires, skip_mangling_name, patches)
     success, output = rpmbuild("-bs", specfile)
