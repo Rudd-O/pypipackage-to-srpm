@@ -77,12 +77,9 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
   out.flush()
   out.close()
 
-def run(cmd, cwd=None, stdin=None):
-  p = subprocess.Popen(cmd, cwd=cwd, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-  stdout, _ = p.communicate()
-  ret = p.wait()
-  ret = ret == 0
-  return ret, stdout
+
+def run(*a, **kw):
+  return subprocess.call(*a, **kw) == 0
 
 
 def remove_spaces_in_first_component(tarfile_path, newtarfile_path):
@@ -99,7 +96,7 @@ def remove_spaces_in_first_component(tarfile_path, newtarfile_path):
     return newtarfile_path
 
 
-def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
+def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None):
   patches = [] if patches is None else patches
   if not os.path.isdir(outputdir):
     raise ValueError("%r must be a directory and must exist" % outputdir)
@@ -107,14 +104,12 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
     if keeptemp:
       print("Temporary work directory:", td)
     if path.endswith(".tar.gz"):
-      success, output = run(["tar", "-zx", "-C", td, "-f", path])
-      if not success:
-        print("Error uncompressing:\n", output, file=sys.stderr)
+      if not run(["tar", "-zx", "-C", td, "-f", path]):
+        print("Error uncompressing.\n", file=sys.stderr)
         return 8
     elif path.endswith(".zip"):
-      success, output = run(["unzip", "-d", td, path])
-      if not success:
-        print("Error uncompressing:\n", output, file=sys.stderr)
+      if not run(["unzip", "-d", td, path]):
+        print("Error uncompressing:\n", file=sys.stderr)
         return 8
     else:
       assert 0, "Do not know how to handle file type of %r" % path
@@ -136,15 +131,11 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
           pf.write(text)
           pf.flush()
           pf.seek(0)
-          success, output = run(['patch', '-p0', '--binary'], cwd=sourcepath, stdin=pf)
-        if not success:
-          print("Error in patching %s:\n" % patch, file=sys.stderr)
-          print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
-          return 10
-    success, output = run([sys.executable, "setup.py", "bdist_rpm", "--spec-only"], cwd=sourcepath)
-    if not success:
-      print("Error in bdist_rpm:", file=sys.stderr)
-      print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
+          if not run(['patch', '-p0', '--binary'], cwd=sourcepath, stdin=pf):
+            print("Error in patching %s." % patch, file=sys.stderr)
+            return 10
+    if not run([sys.executable, "setup.py", "bdist_rpm", "--spec-only"], cwd=sourcepath):
+      print("Error in bdist_rpm.", file=sys.stderr)
       return 10
     try:
         requiresfile = glob.glob(os.path.join(td, "*", "*.egg-info", "requires.txt"))[0]
@@ -155,10 +146,10 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         requires = []
     print("Original requires: %s" % orgrequires, file=sys.stderr)
     print("Requires: %s" % requires, file=sys.stderr)
-    success, findcfiles = run(["find", td, "-name", "*.c", "-print0"])
-    if not success:
-      print("Error in finding C files:", file=sys.stderr)
-      print(output.decode("utf-8", errors="ignore"), file=sys.stderr)
+    try:
+      findcfiles = subprocess.check_output(["find", td, "-name", "*.c", "-print0"])
+    except subprocess.CalledProcessError as e:
+      print("Error in finding C files: %s." % e, file=sys.stderr)
       return 10
     if findcfiles:
       buildrequires = ["python%s-devel" % (sys.version_info.major, )]
@@ -171,7 +162,8 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         breq = setupcfg['bdist_rpm']['build_requires']
     except (IOError, OSError, KeyError, IndexError):
         breq = ""
-    buildrequires.extend([x.strip() for x in breq.split(",")])
+    if breq.strip():
+      buildrequires.extend([x.strip() for x in breq.split(",")])
     print("BuildRequires: %s" % buildrequires, file=sys.stderr)
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
@@ -191,30 +183,30 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, patches=None):
         open(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
     remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
     mangle_specfile(specfile, requires, buildrequires, skip_mangling_name, patches)
-    success, output = rpmbuild("-bs", specfile)
-    if not success:
-      print("Error constructing final source RPM:\n", output, file=sys.stderr)
+    if not rpmbuild("-bs", specfile):
+      print("Error constructing final source RPM.", file=sys.stderr)
+      sys.stderr.write(open(specfile).read())
       return 14
     srpm = glob.glob(os.path.join(td, "RPM", "SRPMS", "*.src.rpm"))[0]
-    success, output = rpmbuild("--rebuild", srpm)
-    if not success:
-      print("Error rebuilding final source RPM:", file=sys.stderr)
-      print(output, file=sys.stderr)
-      return 16
-    brpm = glob.glob(os.path.join(td, "RPM", "RPMS", "*", "*.rpm"))[0]
-    success, output = rpm("-qp", "--provides", brpm)
-    print("Package %s provides:" % os.path.basename(brpm), file=sys.stderr)
-    for line in output.splitlines(False):
-      print("*", line, file=sys.stderr)
-    success, output = rpm("-qp", "--requires", brpm)
-    print("Package %s requires:" % os.path.basename(brpm), file=sys.stderr)
-    for line in output.splitlines(False):
-      print("*", line, file=sys.stderr)
+    if not skip_binary_rpms:
+      if not rpmbuild("--rebuild", srpm):
+        print("Error rebuilding final source RPM.", file=sys.stderr)
+        return 16
+      brpm = glob.glob(os.path.join(td, "RPM", "RPMS", "*", "*.rpm"))[0]
+      print("Package %s provides:" % os.path.basename(brpm), file=sys.stderr)
+      if not rpm("-qp", "--provides", brpm):
+        print("Error querying final binary RPM.", file=sys.stderr)
+        return 17
+      print("Package %s requires:" % os.path.basename(brpm), file=sys.stderr)
+      if not rpm("-qp", "--requires", brpm):
+        print("Error querying final binary RPM.", file=sys.stderr)
+        return 17
     destfile = os.path.join(outputdir, os.path.basename(srpm))
     if os.path.exists(destfile):
       print("Error: not replacing %r" % destfile, file=sys.stderr)
-      return 18
+      return 19
     shutil.move(srpm, destfile)
+
 
 def main():
   parser = argparse.ArgumentParser(description="Turn downloaded PyPI packages into source RPMs")
@@ -236,6 +228,12 @@ def main():
     action="store_true",
     default=False,
   )
+  parser.add_argument('--no-binary-rpms',
+    dest="nobinaryrpms",
+    help="Skip the construction of binary RPMs",
+    action="store_true",
+    default=False,
+  )
   parser.add_argument('source',
     metavar="SOURCE",
     type=str,
@@ -249,7 +247,7 @@ def main():
     help="Plain text diff-formatted patches",
   )
   args = parser.parse_args()
-  ret = package(args.source[0], args.outputdir, args.keeptemp, args.nomanglename, args.patches)
+  ret = package(args.source[0], args.outputdir, args.keeptemp, args.nomanglename, args.nobinaryrpms, args.patches)
   if ret:
     sys.exit(ret)
 
