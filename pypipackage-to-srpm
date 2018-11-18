@@ -23,10 +23,21 @@ except ImportError:
     from shlex import quote
 
 
+def flt(x):
+	x[0] = os.path.sep if not x[0] else x[0]
+	x[-2] = "*"
+	return x
+supplemental = [
+	y
+	for p in sys.path
+	for y in glob.glob(os.path.join(*flt(p.split(os.path.sep))))
+	if p.split(os.path.sep)[-1] == "site-packages"
+	and y not in sys.path
+]
+[ sys.path.append(s) for s in supplemental ]
 sys.path.append(os.path.dirname(__file__))
-
-
 import pypipackagetosrpmmod as mod
+[ sys.path.remove(s) for s in supplemental ]
 
 
 @contextlib.contextmanager
@@ -161,8 +172,8 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
     try:
         setupcfgf = glob.glob(os.path.join(td, "*", "setup.cfg"))[0]
         setupcfg.read(setupcfgf)
-        breq = setupcfg['bdist_rpm']['build_requires']
-    except (IOError, OSError, KeyError, IndexError):
+        breq = setupcfg.get('bdist_rpm', 'build_requires')
+    except (IOError, OSError, KeyError, IndexError, configparser.NoSectionError, configparser.NoOptionError):
         breq = ""
     if breq.strip():
       buildrequires.extend([x.strip() for x in breq.split(",")])
