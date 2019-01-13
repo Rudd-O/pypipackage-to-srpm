@@ -85,6 +85,9 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
       lines[n] = line
     if names_defined:
       lines[n] = lines[n].replace("%{name}", "%{unmangled_name}")
+    if line.startswith("python setup.py"):
+      line = ("python%s setup.py" % (sys.version_info.major, )) + line[len("python setup.py"):]
+      lines[n] = line
   out = open(path, "w")
   out.write("".join(lines))
   out.flush()
