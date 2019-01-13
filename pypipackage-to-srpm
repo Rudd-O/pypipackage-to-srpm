@@ -179,7 +179,12 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
     except (IOError, OSError, KeyError, IndexError, configparser.NoSectionError, configparser.NoOptionError):
         breq = ""
     if breq.strip():
-      buildrequires.extend([x.strip() for x in breq.split(",")])
+      newbuildreqs = [x.strip() for x in breq.split(",")]
+      for n, x in enumerate(newbuildreqs):
+          if x.startswith("python-"):
+              x = ("python%s" % (sys.version_info.major, )) + x[len("python-"):]
+              newbuildreqs[n] = x
+      buildrequires.extend(newbuildreqs)
     print("BuildRequires: %s" % buildrequires, file=sys.stderr)
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
