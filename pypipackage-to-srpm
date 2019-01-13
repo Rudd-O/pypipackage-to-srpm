@@ -182,7 +182,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
       newbuildreqs = [x.strip() for x in breq.split(",")]
       for n, x in enumerate(newbuildreqs):
           if x.startswith("python-"):
-              x = ("python%s" % (sys.version_info.major, )) + x[len("python-"):]
+              x = ("python%s-" % (sys.version_info.major, )) + x[len("python-"):]
               newbuildreqs[n] = x
       buildrequires.extend(newbuildreqs)
     print("BuildRequires: %s" % buildrequires, file=sys.stderr)
