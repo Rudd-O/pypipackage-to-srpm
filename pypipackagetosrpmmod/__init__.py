@@ -1,6 +1,6 @@
 import sys
 
-__version__ = "0.0.9"
+__version__ = "0.0.10"
 
 
 def mangle_name(name):
@@ -11,6 +11,8 @@ def mangle_name(name):
       name = "beautifulsoup4"
   if name == "Jinja2":
       name = "jinja2"
+  if name == "Werkzeug":
+      name = "werkzeug"
   if name.startswith("python"):
     return name
   # Special case pytz.
