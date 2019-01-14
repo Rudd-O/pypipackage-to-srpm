@@ -1,6 +1,6 @@
 import sys
 
-__version__ = "0.0.12"
+__version__ = "0.0.13"
 
 
 def mangle_name(name):
@@ -8,6 +8,8 @@ def mangle_name(name):
   # special case dnspython.
   if name == "dnspython":
       return "python%s-dns" % (sys.version_info.major, )
+  if "asn1-modules" in name:
+      return "python%s-pyasn1-modules" % (sys.version_info.major, )
   if name == "BeautifulSoup4":
       name = "beautifulsoup4"
   if name == "Jinja2":
