@@ -50,7 +50,7 @@ def tmpdir(keeptemp=False):
       shutil.rmtree(d)
 
 
-def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
+def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches, epoch):
   unmangled_name = None
   mangled_name = None
   names_defined = False
@@ -69,7 +69,7 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
     if line.startswith("%define name "):
       unmangled_name = line[len("%define name "):]
       mangled_name = unmangled_name if skip_mangling_name else mod.mangle_name(unmangled_name)
-      lines[n] = "%define unmangled_name " + unmangled_name + "%define mangled_name " + mangled_name 
+      lines[n] = "%define unmangled_name " + unmangled_name + "\n" + "%define mangled_name " + mangled_name + "\n"
     elif line.startswith("%define release "):
       if "%{?dist}" not in line:
         line = "%define release " + line[len("%define release "):-1] + "%{?dist}" + "\n"
@@ -85,6 +85,8 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches):
       if buildrequires:
         buildrequires = "BuildRequires: %s\n" % ", ".join(buildrequires)
         lines[n] = lines[n] + buildrequires
+      if epoch:
+        lines[n] = lines[n] + "Epoch: %s\n" % epoch
       names_defined = True
     elif line.startswith("Source") and patches:
         extralines = []
@@ -124,7 +126,7 @@ def remove_spaces_in_first_component(tarfile_path, newtarfile_path):
     return newtarfile_path
 
 
-def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None):
+def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None, epoch=None):
   patches = [] if patches is None else patches
   if not os.path.isdir(outputdir):
     raise ValueError("%r must be a directory and must exist" % outputdir)
@@ -200,7 +202,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
             text = text.replace(b"\n", b"\r\n")
         open(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
     remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
-    mangle_specfile(specfile, requires, buildrequires, skip_mangling_name, patches)
+    mangle_specfile(specfile, requires, buildrequires, skip_mangling_name, patches, epoch)
     if not rpmbuild("-bs", specfile):
       print("Error constructing final source RPM.", file=sys.stderr)
       sys.stderr.write(open(specfile).read())
@@ -234,6 +236,12 @@ def main():
     action="store",
     default=os.path.curdir,
   )
+  parser.add_argument('--epoch',
+    dest="epoch",
+    help="Define an epoch for the package (to supplement the fact that bdist_rpm does not support it)",
+    action="store",
+    default="",
+  )
   parser.add_argument('--keeptemp',
     dest="keeptemp",
     help="Print and keep the temporary work directory",
@@ -265,7 +273,7 @@ def main():
     help="Plain text diff-formatted patches",
   )
   args = parser.parse_args()
-  ret = package(args.source[0], args.outputdir, args.keeptemp, args.nomanglename, args.nobinaryrpms, args.patches)
+  ret = package(args.source[0], args.outputdir, args.keeptemp, args.nomanglename, args.nobinaryrpms, args.patches, args.epoch)
   if ret:
     sys.exit(ret)
 
