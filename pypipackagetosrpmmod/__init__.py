@@ -1,9 +1,10 @@
 import sys
 
-__version__ = "0.0.11"
+__version__ = "0.0.12"
 
 
 def mangle_name(name):
+  name = name.rstrip()
   # special case dnspython.
   if name == "dnspython":
       return "python%s-dns" % (sys.version_info.major, )

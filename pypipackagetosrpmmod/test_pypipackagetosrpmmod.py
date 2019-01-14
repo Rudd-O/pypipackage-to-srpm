@@ -31,3 +31,6 @@ uritemplate<4dev,>=3.0.0""".splitlines()
         ]
         out_ = mod.gen_requires(in_)
         self.assertEqual(exp_, out_)
+
+    def test_mangle_name_enter(self):
+        assert mod.mangle_name("Babel\n") == "python%s-babel" % sys.version_info.major
