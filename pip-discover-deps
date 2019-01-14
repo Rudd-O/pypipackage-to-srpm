@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 
 from __future__ import print_function
 
@@ -16,7 +16,7 @@ while args:
         continue
     print("Processing", arg)
     s = sys.version_info.major
-    out = subprocess.check_output(['pip%s'%s, 'download', '-vvv', '-d', 'sources/', '--no-binary', ':all:', '--no-deps', arg])
+    out = subprocess.check_output(['pip%s'%s, 'download', '-vvv', '-d', 'sources/', '--no-binary', ':all:', '--no-deps', arg]).decode("utf-8")
     try:
         url = [x[len("  Downloading from URL "):].strip() for x in out.splitlines() if x.startswith("  Downloading from URL ")][0]
         saved = [x[len("  Saved "):].strip() for x in out.splitlines() if x.startswith("  Saved ")][0]
@@ -26,16 +26,19 @@ while args:
     if url:
         print("URL", url)
     try:
-        out = subprocess.check_output(['./pypipackage-to-srpm', '--outputdir=rpms/', saved], stderr=subprocess.STDOUT)
+        out = subprocess.check_output(["python%s"%s, './pypipackage-to-srpm', '--outputdir=rpms/', saved], stderr=subprocess.STDOUT).decode("utf-8")
     except subprocess.CalledProcessError as e:
-        if "Error: not replacing " in e.output:
+        if "Error: not replacing " in e.output.decode("utf-8"):
             print("Already done", arg)
-            out = e.output
+            out = e.output.decode("utf-8")
         else:
-            print(e.output)
+            print(e.output.decode("utf-8"))
             raise
     try:
-        exec "reqs = " + [x[len("Original requires: "):] for x in out.splitlines() if x.startswith("Original requires: ")][0]
+        st = "reqs = " + [x[len("Original requires: "):] for x in out.splitlines() if x.startswith("Original requires: ")][0]
+        locs = dict(locals())
+        exec(st, globals(), locs)
+        reqs = locs['reqs']
     except IndexError:
         assert 0, out
     alreadydone.add(arg)

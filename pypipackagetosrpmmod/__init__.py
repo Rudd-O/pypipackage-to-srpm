@@ -9,6 +9,8 @@ def mangle_name(name):
       return "python%s-dns" % (sys.version_info.major, )
   if name == "BeautifulSoup4":
       name = "beautifulsoup4"
+  if name == "Jinja2":
+      name = "jinja2"
   if name.startswith("python"):
     return name
   # Special case pytz.
