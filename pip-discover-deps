@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
+from __future__ import print_function
 
 import os, sys, subprocess
 
@@ -12,8 +14,9 @@ while args:
     arg, args = args[0], args[1:]
     if arg in alreadydone:
         continue
-    print "Processing", arg
-    out = subprocess.check_output(['pip', 'download', '-vvv', '-d', 'sources/', '--no-binary', ':all:', '--no-deps', arg])
+    print("Processing", arg)
+    s = sys.version_info.major
+    out = subprocess.check_output(['pip%s'%s, 'download', '-vvv', '-d', 'sources/', '--no-binary', ':all:', '--no-deps', arg])
     try:
         url = [x[len("  Downloading from URL "):].strip() for x in out.splitlines() if x.startswith("  Downloading from URL ")][0]
         saved = [x[len("  Saved "):].strip() for x in out.splitlines() if x.startswith("  Saved ")][0]
@@ -21,15 +24,15 @@ while args:
         saved = [x[len("  File was already downloaded "):].strip() for x in out.splitlines() if x.startswith("  File was already downloaded ")][0]
         url = None
     if url:
-        print "URL", url
+        print("URL", url)
     try:
         out = subprocess.check_output(['./pypipackage-to-srpm', '--outputdir=rpms/', saved], stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError, e:
+    except subprocess.CalledProcessError as e:
         if "Error: not replacing " in e.output:
-            print "Already done", arg
+            print("Already done", arg)
             out = e.output
         else:
-            print e.output
+            print(e.output)
             raise
     try:
         exec "reqs = " + [x[len("Original requires: "):] for x in out.splitlines() if x.startswith("Original requires: ")][0]
