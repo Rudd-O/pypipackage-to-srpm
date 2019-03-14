@@ -185,6 +185,11 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
       buildrequires = ["python%s-devel" % (sys.version_info.major, )]
     else:
       buildrequires = []
+    try:
+      grepped = subprocess.check_output(["grep", "setuptools", "setup.py"])
+      buildrequires.append("python%s-setuptools" % (sys.version_info.major, ))
+    except subprocess.CalledProcessError as e:
+      pass
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
     def rpmbuild(*args):
