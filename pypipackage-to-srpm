@@ -102,6 +102,12 @@ def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches, 
     if line.startswith("python setup.py"):
       line = ("python%s setup.py" % (sys.version_info.major, )) + line[len("python setup.py"):]
       lines[n] = line
+    if "--single-version-externally-managed" in line and sys.version_info.major == 3:
+        line = line.replace(
+            "--single-version-externally-managed",
+            "--egg"
+        )
+        lines[n] = line
   out = open(path, "w")
   out.write("".join(lines))
   out.flush()
@@ -186,7 +192,10 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
     else:
       buildrequires = []
     try:
-      grepped = subprocess.check_output(["grep", "setuptools", "setup.py"])
+      srcdir = os.path.join(td, '*', "setup.py")
+      srcsetups = glob.glob(srcdir)
+      if srcsetups:
+        grepped = subprocess.check_output(["grep", "setuptools"] + srcsetups)
       buildrequires.append("python%s-setuptools" % (sys.version_info.major, ))
     except subprocess.CalledProcessError as e:
       pass
