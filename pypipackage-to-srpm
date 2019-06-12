@@ -151,7 +151,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
       assert 0, "Do not know how to handle file type of %r" % path
     sourcepath = glob.glob(os.path.join(td, "*"))[0]
     if " " in sourcepath:
-        new_sourcepath = sourcepath.replace(" ", "-")
+        new_sourcepath = sourcepath.replace(" ", "")
         print("Renaming %s to %s" % (sourcepath, new_sourcepath), file=sys.stderr)
         os.rename(sourcepath, new_sourcepath)
         sourcepath = new_sourcepath
