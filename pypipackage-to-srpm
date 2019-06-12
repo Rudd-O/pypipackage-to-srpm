@@ -279,7 +279,7 @@ def main():
   )
   parser.add_argument('--disable-debug',
     dest="disabledebug",
-    help="Disable %debug generation",
+    help="Disable debug package generation",
     action="store_true",
     default=False,
   )
