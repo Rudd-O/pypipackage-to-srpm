@@ -135,6 +135,35 @@ def remove_spaces_in_first_component(tarfile_path, newtarfile_path):
     return newtarfile_path
 
 
+def get_buildrequires_from_setup_cfg(path_to_setup_cfg):
+    with open(path_to_setup_cfg, 'r') as f:
+        lines = f.readlines()
+    doing_options = False
+    doing_setup_requires = False
+    breqs = []
+    for line in lines:
+        if line.startswith('[options]'):
+            doing_options = True
+            continue
+        if doing_options:
+            if line.startswith('['):
+                doing_options = False
+                continue
+            if line.startswith('setup_requires'):
+                doing_setup_requires = True
+                first_require = line.split("=", 1)
+                if first_require[1].strip():
+                    breqs.append(first_require[1].strip())
+                continue
+            if doing_setup_requires:
+                if line.startswith("\t") or line.startswith(" "):
+                    # this is a requirement
+                    breqs.append(line.strip())
+                else:
+                    doing_setup_requires = False
+                continue
+
+
 def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None, epoch=None, disabledebug=False):
   patches = [] if patches is None else patches
   if not os.path.isdir(outputdir):
@@ -207,6 +236,10 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
         buildrequires.append("python%s-setuptools_scm" % (sys.version_info.major, ))
       except subprocess.CalledProcessError as e:
         pass
+    cfgdir = os.path.join(td, '*', "setup.cfg")
+    cfgsetups = glob.glob(cfgdir)
+    if cfgsetups:
+        buildrequires.extend(mod.gen_requires(get_buildrequires_from_setup_cfg(cfgsetups[0])))
     print("BuildRequires: %s" % buildrequires, file=sys.stderr)
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
