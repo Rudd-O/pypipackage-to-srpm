@@ -146,6 +146,8 @@ def get_buildrequires_from_setup_cfg(path_to_setup_cfg):
             doing_options = True
             continue
         if doing_options:
+            if line.strip().startswith("#"):
+                continue
             if line.startswith('['):
                 doing_options = False
                 continue
