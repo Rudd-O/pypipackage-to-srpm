@@ -162,6 +162,7 @@ def get_buildrequires_from_setup_cfg(path_to_setup_cfg):
                 else:
                     doing_setup_requires = False
                 continue
+    return breqs
 
 
 def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None, epoch=None, disabledebug=False):
