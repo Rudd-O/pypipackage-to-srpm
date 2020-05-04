@@ -194,14 +194,20 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
       buildrequires = ["python%s-devel" % (sys.version_info.major, )]
     else:
       buildrequires = []
-    try:
-      srcdir = os.path.join(td, '*', "setup.py")
-      srcsetups = glob.glob(srcdir)
-      if srcsetups:
+    srcdir = os.path.join(td, '*', "setup.py")
+    srcsetups = glob.glob(srcdir)
+    if srcsetups:
+      try:
         grepped = subprocess.check_output(["grep", "setuptools"] + srcsetups)
-      buildrequires.append("python%s-setuptools" % (sys.version_info.major, ))
-    except subprocess.CalledProcessError as e:
-      pass
+        buildrequires.append("python%s-setuptools" % (sys.version_info.major, ))
+      except subprocess.CalledProcessError as e:
+        pass
+      try:
+        grepped = subprocess.check_output(["grep", "use_scm_version"] + srcsetups)
+        buildrequires.append("python%s-setuptools_scm" % (sys.version_info.major, ))
+      except subprocess.CalledProcessError as e:
+        pass
+    print("BuildRequires: %s" % buildrequires, file=sys.stderr)
     def rpm(*args):
       return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
     def rpmbuild(*args):
