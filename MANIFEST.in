@@ -1,2 +1,2 @@
-recursive-include test_*.py
+recursive-include * test_*.py
 include README.md
