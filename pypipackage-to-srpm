@@ -49,72 +49,127 @@ def tmpdir(keeptemp=False):
     if not keeptemp:
       shutil.rmtree(d)
 
+template = """
+# See https://docs.fedoraproject.org/en-US/packaging-guidelines/Python/#_example_spec_file
 
-def mangle_specfile(path, requires, buildrequires, skip_mangling_name, patches, epoch, disabledebug):
-  unmangled_name = None
-  mangled_name = None
-  names_defined = False
-  lines = open(path, "r").readlines()
+%define debug_package %{nil}
 
-  if disabledebug:
-      lines = ["%global debug_package %{nil}\n"] + lines
+%define original_name @ORIGINAL_NAME@
+%define dashed_name @DASHED_NAME@
 
+%define mybuildnumber %{?build_number}%{?!build_number:1}
+
+Name:           python-%{dashed_name}
+Version:        @VERSION@
+Release:        %{mybuildnumber}%{?dist}
+Summary:        @SUMMARY@
+
+License:        @LICENSE@
+Source:         %{url}/archive/v%{version}/%{original_name}-%{version}.tar.gz
+
+BuildArch:      noarch
+BuildRequires:  pyproject-rpm-macros
+
+%global _description %{expand:
+@DESCRIPTION@}
+
+%description %_description
+
+%package -n python3-%{dashed_name}
+Summary:        %{summary}
+
+%description -n python3-%{dashed_name} %_description
+
+%prep
+%autosetup -p1 -n %{original_name}-%{version}
+
+%generate_buildrequires
+if test -f tox.ini ; then
+
+%pyproject_buildrequires -t
+
+else
+
+%pyproject_buildrequires
+
+fi
+
+
+%build
+%pyproject_wheel
+
+
+%install
+%pyproject_install
+
+%pyproject_save_files %{original_name}
+
+
+%check
+if test -f tox.ini  ; then
+
+%tox
+
+fi
+
+%files -n python3-%{dashed_name} -f %{pyproject_files}
+%doc README*
+%{_bindir}/*
+
+
+%changelog
+* Thu Jun 16 2022 Manuel Amador <rudd-o@rudd-o.com> 0.1.0-1
+- This release date means nothing.
+"""
+
+
+def mangle_specfile(path, patches, epoch):
+  data = {}
+  descriptionmode = False
+  with open(path, "r") as f:
+    lines = f.readlines()
+  defines = {}
   for line in lines:
-    if line.startswith("BuildRequires:"):
-      existingbreqs = [x.strip() for x in line.lstrip("BuildRequires:").split(",")]
-      for n, x in enumerate(existingbreqs):
-          if x.startswith("python-"):
-              x = ("python%s-" % (sys.version_info.major, )) + x[len("python-"):]
-              existingbreqs[n] = x
-      buildrequires.extend(existingbreqs)
+    if descriptionmode:
+      if line.startswith("%"):
+        data["description"] = "".join(data["description"])
+        descriptionmode = False
+      else:
+        data["description"].append(line)
+    elif line.startswith("%define "):
+      _, k, v = line.split(" ", 2)
+      defines[k] = v.rstrip()
+    elif line.startswith("Name:"):
+      data["name"] = line.split(":")[1].strip()
+    elif line.startswith("Summary:"):
+      data["summary"] = line.split(":")[1].strip()
+    elif line.startswith("Version:"):
+      data["version"] = line.split(":")[1].strip()
+    elif line.startswith("License:"):
+      data["license"] = line.split(":")[1].strip()
+    elif line.startswith("%description"):
+      descriptionmode = True
+      data["description"] = []
+  if epoch is not None:
+    data["epoch"] = "Epoch:      %s" % epoch
+  if patches:
+    data["patches"] = "\n".join("Patch%s:      %s" % (n, fn) for n, fn in enumerate(patches))
 
-  for n, line in enumerate(lines[:]):
-    if line.startswith("%define name "):
-      unmangled_name = line[len("%define name "):]
-      mangled_name = unmangled_name if skip_mangling_name else mod.mangle_name(unmangled_name)
-      lines[n] = "%define unmangled_name " + unmangled_name + "\n" + "%define mangled_name " + mangled_name + "\n"
-    elif line.startswith("%define release "):
-      if "%{?dist}" not in line:
-        line = "%define release " + line[len("%define release "):-1] + "%{?dist}" + "\n"
-      line = line.replace("%define release 1", "%define release %{?build_number}%{?!build_number:1}")
-      lines[n] = line
-    elif line.startswith("BuildRequires:"):
-        lines[n] = "# Rewritten BuildRequires"
-    elif line.startswith("Name: "):
-      lines[n] = lines[n].replace("%{name}", "%{mangled_name}")
-      if requires:
-        requires = "Requires: %s\n" % ", ".join(requires)
-        lines[n] = lines[n] + requires
-      if buildrequires:
-        buildrequires = "BuildRequires: %s\n" % ", ".join(buildrequires)
-        lines[n] = lines[n] + buildrequires
-      if epoch:
-        lines[n] = lines[n] + "Epoch: %s\n" % epoch
-      names_defined = True
-    elif line.startswith("Source") and patches:
-        extralines = []
-        for patchn, patch in enumerate(patches):
-            line = line + "Patch%d: %s\n" % (patchn, os.path.basename(patch))
-        lines[n] = line
-    elif line.startswith("%setup") and patches:
-      for patch in patches:
-        line = line + "patch -p0 --binary < %%{_sourcedir}/%s\n" % quote(os.path.basename(patch))
-      lines[n] = line
-    if names_defined:
-      lines[n] = lines[n].replace("%{name}", "%{unmangled_name}")
-    if line.startswith("python setup.py"):
-      line = ("python%s setup.py" % (sys.version_info.major, )) + line[len("python setup.py"):]
-      lines[n] = line
-    if "--single-version-externally-managed" in line and sys.version_info.major == 3:
-        line = line.replace(
-            "--single-version-externally-managed",
-            ""
-        )
-        lines[n] = line
-  out = open(path, "w")
-  out.write("".join(lines))
-  out.flush()
-  out.close()
+  if "name" in defines:
+    data["original_name"] = defines["name"]
+    data["dashed_name"] = defines["name"].replace("_", "-")
+    del defines["name"]
+  if "version" in defines:
+    data["version"]  = defines["version"]
+    del defines["version"]
+
+  global template
+  tpl = template
+  for k, v in data.items():
+    tpl = tpl.replace("@%s@" % k.upper(), v)
+  tpl = "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()) + "\n\n" + tpl
+  with open(path, "w") as f:
+    f.write(tpl)
 
 
 def run(*a, **kw):
@@ -261,7 +316,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
             text = text.replace(b"\n", b"\r\n")
         open(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
     remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
-    mangle_specfile(specfile, requires, buildrequires, skip_mangling_name, patches, epoch, disabledebug)
+    mangle_specfile(specfile, patches, epoch)
     if not rpmbuild("-bs", specfile):
       print("Error constructing final source RPM.", file=sys.stderr)
       sys.stderr.write(open(specfile).read())
