@@ -59,6 +59,7 @@ template = """
 
 %define original_name @ORIGINAL_NAME@
 %define dashed_name @DASHED_NAME@
+%define module_to_save @MODULE_TO_SAVE@
 
 %define mybuildnumber %{?build_number}%{?!build_number:1}
 
@@ -105,7 +106,7 @@ fi
 %install
 %pyproject_install
 
-@PYPROJECT_SAVE_FILES@
+%pyproject_save_files %{module_to_save}
 
 
 %check
@@ -118,6 +119,7 @@ fi
 %files -n python3-%{dashed_name} -f %{pyproject_files}
 %doc README*
 @BINDIR@
+@EXTRA@
 
 %changelog
 * Thu Jun 16 2022 Manuel Amador <rudd-o@rudd-o.com> 0.1.0-1
@@ -131,6 +133,8 @@ def mangle_specfile(
     epoch,
     archindependent=True,
     glob_bindir=False,
+    module_to_save=None,
+    extra_globs=None,
 ):
     data = {}
     descriptionmode = False
@@ -168,7 +172,12 @@ def mangle_specfile(
     if "name" in defines:
         data["original_name"] = defines["name"]
         data["dashed_name"] = defines["name"].replace("_", "-")
+        data["module_to_save"] = (
+            module_to_save if module_to_save else data["original_name"]
+        )
         del defines["name"]
+    else:
+        assert 0, "The package appears to have no name %defined."
     if "version" in defines:
         data["version"] = defines["version"]
         del defines["version"]
@@ -178,15 +187,14 @@ def mangle_specfile(
     for k, v in data.items():
         tpl = tpl.replace("@%s@" % k.upper(), v)
     tpl = tpl.replace("@ARCH@", "BuildArch: noarch" if archindependent else "")
-    tpl = tpl.replace(
-        "@PYPROJECT_SAVE_FILES@",
-        "%pyproject_save_files %{original_name}"
-        if not data["original_name"].startswith("python-")
-        else "%%pyproject_save_files %s" % data["original_name"][7:],
-    )
     tpl = tpl.replace("@BINDIR@", "%{_bindir}/*" if glob_bindir else "")
-    tpl = (
-        "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()) + "\n\n" + tpl
+    tpl = tpl.replace("@EXTRA@", "\n".join(extra_globs) if extra_globs else "")
+    tpl = "".join(
+        [
+            "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()),
+            "\n\n",
+            tpl,
+        ]
     )
     with open(path, "w") as f:
         f.write(tpl)
@@ -251,6 +259,9 @@ def package(
     epoch=None,
     glob_bindir=False,
     archindependent=True,
+    module_to_save=None,
+    extra_globs=None,
+    showspec=False,
 ):
     patches = [] if patches is None else patches
     if not os.path.isdir(outputdir):
@@ -365,7 +376,19 @@ def package(
         remove_spaces_in_first_component(
             path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path))
         )
-        mangle_specfile(specfile, patches, epoch, archindependent, glob_bindir)
+        mangle_specfile(
+            specfile,
+            patches,
+            epoch,
+            archindependent,
+            glob_bindir,
+            module_to_save,
+            extra_globs,
+        )
+        if showspec:
+            with open(specfile, "r") as f:
+                sys.stdout.write(f.read())
+                return 0
         if not rpmbuild("-bs", specfile):
             print("Error constructing final source RPM.", file=sys.stderr)
             sys.stderr.write(open(specfile).read())
@@ -417,6 +440,13 @@ def main():
         default=False,
     )
     parser.add_argument(
+        "--showspec",
+        dest="showspec",
+        help="Print the specfile and then quit",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
         "--no-mangle-name",
         dest="nomanglename",
         help="Avoid mangling the package name",
@@ -438,11 +468,24 @@ def main():
         default=False,
     )
     parser.add_argument(
+        "--extra-globs",
+        dest="extra_globs",
+        help="Additional globs to include in %%files",
+        action="append",
+    )
+    parser.add_argument(
         "--arch-dependent",
         dest="archdependent",
         help="Disable arch-independent package",
         action="store_true",
         default=False,
+    )
+    parser.add_argument(
+        "--module-to-save",
+        dest="module_to_save",
+        help="If specified, tells RPM which module was packaged that needs to be saved",
+        action="store",
+        default=None,
     )
     parser.add_argument(
         "source",
@@ -469,6 +512,9 @@ def main():
         args.epoch,
         args.glob_bindir,
         not args.archdependent,
+        args.module_to_save,
+        args.extra_globs,
+        args.showspec,
     )
     if ret:
         sys.exit(ret)
