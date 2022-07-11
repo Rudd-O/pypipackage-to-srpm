@@ -71,6 +71,8 @@ Summary:        @SUMMARY@
 License:        @LICENSE@
 Source:         %{url}/archive/v%{version}/%{original_name}-%{version}.tar.gz
 
+@PATCHES@
+
 @ARCH@
 BuildRequires:  pyproject-rpm-macros
 BuildRequires:  python3-packaging
@@ -167,7 +169,8 @@ def mangle_specfile(
         data["epoch"] = "Epoch:      %s" % epoch
     if patches:
         data["patches"] = "\n".join(
-            "Patch%s:      %s" % (n, fn) for n, fn in enumerate(patches)
+            "Patch%s:      %s" % (n, os.path.basename(fn))
+            for n, fn in enumerate(patches)
         )
 
     if "name" in defines:
