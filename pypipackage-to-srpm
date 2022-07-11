@@ -167,8 +167,7 @@ def mangle_specfile(path, patches, epoch, archindependent=True):
   tpl = template
   for k, v in data.items():
     tpl = tpl.replace("@%s@" % k.upper(), v)
-  if archindependent:
-    tpl = tpl.replace("@ARCH@", "BuildArch: noarch")
+    tpl = tpl.replace("@ARCH@", "BuildArch: noarch" if archindependent else "")
   tpl = "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()) + "\n\n" + tpl
   with open(path, "w") as f:
     f.write(tpl)
