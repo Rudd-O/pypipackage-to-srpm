@@ -323,7 +323,11 @@ def package(
                 pf.write(text)
                 pf.flush()
                 pf.seek(0)
-                if not run(["patch", "-p0", "--binary"], cwd=sourcepath, stdin=pf):
+                if not run(
+                    ["patch", "-p0", "--binary"],
+                    cwd=sourcepath,
+                    stdin=pf,
+                ):
                     print("Error in patching %s." % patch, file=sys.stderr)
                     return 10
         if not run(
