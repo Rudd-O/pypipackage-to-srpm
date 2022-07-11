@@ -24,30 +24,33 @@ except ImportError:
 
 
 def flt(x):
-	x[0] = os.path.sep if not x[0] else x[0]
-	x[-2] = "*"
-	return x
+    x[0] = os.path.sep if not x[0] else x[0]
+    x[-2] = "*"
+    return x
+
+
 supplemental = [
-	y
-	for p in sys.path
-	for y in glob.glob(os.path.join(*flt(p.split(os.path.sep))))
-	if p.split(os.path.sep)[-1] == "site-packages"
-	and y not in sys.path
+    y
+    for p in sys.path
+    for y in glob.glob(os.path.join(*flt(p.split(os.path.sep))))
+    if p.split(os.path.sep)[-1] == "site-packages" and y not in sys.path
 ]
-[ sys.path.append(s) for s in supplemental ]
+[sys.path.append(s) for s in supplemental]
 sys.path.append(os.path.dirname(__file__))
 import pypipackagetosrpmmod as mod
-[ sys.path.remove(s) for s in supplemental ]
+
+[sys.path.remove(s) for s in supplemental]
 
 
 @contextlib.contextmanager
 def tmpdir(keeptemp=False):
-  d = tempfile.mkdtemp()
-  try:
-    yield d
-  finally:
-    if not keeptemp:
-      shutil.rmtree(d)
+    d = tempfile.mkdtemp()
+    try:
+        yield d
+    finally:
+        if not keeptemp:
+            shutil.rmtree(d)
+
 
 template = """
 # See https://docs.fedoraproject.org/en-US/packaging-guidelines/Python/#_example_spec_file
@@ -102,7 +105,7 @@ fi
 %install
 %pyproject_install
 
-%pyproject_save_files %{original_name}
+@PYPROJECT_SAVE_FILES@
 
 
 %check
@@ -124,64 +127,73 @@ fi
 
 
 def mangle_specfile(path, patches, epoch, archindependent=True):
-  data = {}
-  descriptionmode = False
-  with open(path, "r") as f:
-    lines = f.readlines()
-  defines = {}
-  for line in lines:
-    if descriptionmode:
-      if line.startswith("%"):
-        data["description"] = "".join(data["description"])
-        descriptionmode = False
-      else:
-        data["description"].append(line)
-    elif line.startswith("%define "):
-      _, k, v = line.split(" ", 2)
-      defines[k] = v.rstrip()
-    elif line.startswith("Name:"):
-      data["name"] = line.split(":")[1].strip()
-    elif line.startswith("Summary:"):
-      data["summary"] = line.split(":")[1].strip()
-    elif line.startswith("Version:"):
-      data["version"] = line.split(":")[1].strip()
-    elif line.startswith("License:"):
-      data["license"] = line.split(":")[1].strip()
-    elif line.startswith("%description"):
-      descriptionmode = True
-      data["description"] = []
-  if epoch is not None:
-    data["epoch"] = "Epoch:      %s" % epoch
-  if patches:
-    data["patches"] = "\n".join("Patch%s:      %s" % (n, fn) for n, fn in enumerate(patches))
+    data = {}
+    descriptionmode = False
+    with open(path, "r") as f:
+        lines = f.readlines()
+    defines = {}
+    for line in lines:
+        if descriptionmode:
+            if line.startswith("%"):
+                data["description"] = "".join(data["description"])
+                descriptionmode = False
+            else:
+                data["description"].append(line)
+        elif line.startswith("%define "):
+            _, k, v = line.split(" ", 2)
+            defines[k] = v.rstrip()
+        elif line.startswith("Name:"):
+            data["name"] = line.split(":")[1].strip()
+        elif line.startswith("Summary:"):
+            data["summary"] = line.split(":")[1].strip()
+        elif line.startswith("Version:"):
+            data["version"] = line.split(":")[1].strip()
+        elif line.startswith("License:"):
+            data["license"] = line.split(":")[1].strip()
+        elif line.startswith("%description"):
+            descriptionmode = True
+            data["description"] = []
+    if epoch is not None:
+        data["epoch"] = "Epoch:      %s" % epoch
+    if patches:
+        data["patches"] = "\n".join(
+            "Patch%s:      %s" % (n, fn) for n, fn in enumerate(patches)
+        )
 
-  if "name" in defines:
-    data["original_name"] = defines["name"]
-    data["dashed_name"] = defines["name"].replace("_", "-")
-    del defines["name"]
-  if "version" in defines:
-    data["version"]  = defines["version"]
-    del defines["version"]
+    if "name" in defines:
+        data["original_name"] = defines["name"]
+        data["dashed_name"] = defines["name"].replace("_", "-")
+        del defines["name"]
+    if "version" in defines:
+        data["version"] = defines["version"]
+        del defines["version"]
 
-  global template
-  tpl = template
-  for k, v in data.items():
-    tpl = tpl.replace("@%s@" % k.upper(), v)
+    global template
+    tpl = template
+    for k, v in data.items():
+        tpl = tpl.replace("@%s@" % k.upper(), v)
     tpl = tpl.replace("@ARCH@", "BuildArch: noarch" if archindependent else "")
-  tpl = "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()) + "\n\n" + tpl
-  with open(path, "w") as f:
-    f.write(tpl)
+    tpl = tpl.replace(
+        "@PYPROJECT_SAVE_FILES@",
+        "%pyproject_save_files %{original_name}"
+        if not data["original_name"].startswith("python-")
+        else "%%pyproject_save_files %s" % data["original_name"][7:],
+    )
+    tpl = (
+        "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()) + "\n\n" + tpl
+    )
+    with open(path, "w") as f:
+        f.write(tpl)
 
 
 def run(*a, **kw):
-  return subprocess.call(*a, **kw) == 0
+    return subprocess.call(*a, **kw) == 0
 
 
 def remove_spaces_in_first_component(tarfile_path, newtarfile_path):
     tar = tarfile.open(tarfile_path, "r:gz")
     newtar = tarfile.open(newtarfile_path, "w:gz")
     for tarinfo in tar:
-        oldcomps = tarinfo.name
         comps = tarinfo.name.split(os.path.sep)
         comps[0] = comps[0].replace(" ", "")
         tarinfo.name = os.path.sep.join(comps)
@@ -192,22 +204,22 @@ def remove_spaces_in_first_component(tarfile_path, newtarfile_path):
 
 
 def get_buildrequires_from_setup_cfg(path_to_setup_cfg):
-    with open(path_to_setup_cfg, 'r') as f:
+    with open(path_to_setup_cfg, "r") as f:
         lines = f.readlines()
     doing_options = False
     doing_setup_requires = False
     breqs = []
     for line in lines:
-        if line.startswith('[options]'):
+        if line.startswith("[options]"):
             doing_options = True
             continue
         if doing_options:
             if line.strip().startswith("#"):
                 continue
-            if line.startswith('['):
+            if line.startswith("["):
                 doing_options = False
                 continue
-            if line.startswith('setup_requires'):
+            if line.startswith("setup_requires"):
                 doing_setup_requires = True
                 first_require = line.split("=", 1)
                 if first_require[1].strip():
@@ -223,188 +235,240 @@ def get_buildrequires_from_setup_cfg(path_to_setup_cfg):
     return breqs
 
 
-def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None, epoch=None, disabledebug=False, archindependent=True):
-  patches = [] if patches is None else patches
-  if not os.path.isdir(outputdir):
-    raise ValueError("%r must be a directory and must exist" % outputdir)
-  with tmpdir(keeptemp) as td:
-    if keeptemp:
-      print("Temporary work directory:", td)
-    if path.endswith(".tar.gz"):
-      if not run(["tar", "-zx", "-C", td, "-f", path]):
-        print("Error uncompressing.\n", file=sys.stderr)
-        return 8
-    elif path.endswith(".zip"):
-      if not run(["unzip", "-d", td, path]):
-        print("Error uncompressing:\n", file=sys.stderr)
-        return 8
-    else:
-      assert 0, "Do not know how to handle file type of %r" % path
-    sourcepath = glob.glob(os.path.join(td, "*"))[0]
-    if " " in sourcepath:
-        new_sourcepath = sourcepath.replace(" ", "")
-        print("Renaming %s to %s" % (sourcepath, new_sourcepath), file=sys.stderr)
-        os.rename(sourcepath, new_sourcepath)
-        sourcepath = new_sourcepath
-        del new_sourcepath
-    for patch in patches:
-        text = open(patch, "rb").read()
-        with tempfile.NamedTemporaryFile() as pf:
-          if ".unix2dos." in patch:
-            try:
-              text = text.replace("\n", "\r\n")
-            except TypeError:
-              text = text.replace(b"\n", b"\r\n")
-          pf.write(text)
-          pf.flush()
-          pf.seek(0)
-          if not run(['patch', '-p0', '--binary'], cwd=sourcepath, stdin=pf):
-            print("Error in patching %s." % patch, file=sys.stderr)
+def package(
+    path,
+    outputdir,
+    keeptemp,
+    skip_mangling_name=False,
+    skip_binary_rpms=False,
+    patches=None,
+    epoch=None,
+    disabledebug=False,
+    archindependent=True,
+):
+    patches = [] if patches is None else patches
+    if not os.path.isdir(outputdir):
+        raise ValueError("%r must be a directory and must exist" % outputdir)
+    with tmpdir(keeptemp) as td:
+        if keeptemp:
+            print("Temporary work directory:", td)
+        if path.endswith(".tar.gz"):
+            if not run(["tar", "-zx", "-C", td, "-f", path]):
+                print("Error uncompressing.\n", file=sys.stderr)
+                return 8
+        elif path.endswith(".zip"):
+            if not run(["unzip", "-d", td, path]):
+                print("Error uncompressing:\n", file=sys.stderr)
+                return 8
+        else:
+            assert 0, "Do not know how to handle file type of %r" % path
+        sourcepath = glob.glob(os.path.join(td, "*"))[0]
+        if " " in sourcepath:
+            new_sourcepath = sourcepath.replace(" ", "")
+            print("Renaming %s to %s" % (sourcepath, new_sourcepath), file=sys.stderr)
+            os.rename(sourcepath, new_sourcepath)
+            sourcepath = new_sourcepath
+            del new_sourcepath
+        for patch in patches:
+            text = open(patch, "rb").read()
+            with tempfile.NamedTemporaryFile() as pf:
+                if ".unix2dos." in patch:
+                    try:
+                        text = text.replace("\n", "\r\n")
+                    except TypeError:
+                        text = text.replace(b"\n", b"\r\n")
+                pf.write(text)
+                pf.flush()
+                pf.seek(0)
+                if not run(["patch", "-p0", "--binary"], cwd=sourcepath, stdin=pf):
+                    print("Error in patching %s." % patch, file=sys.stderr)
+                    return 10
+        if not run(
+            [sys.executable, "setup.py", "bdist_rpm", "--spec-only"], cwd=sourcepath
+        ):
+            print("Error in bdist_rpm.", file=sys.stderr)
             return 10
-    if not run([sys.executable, "setup.py", "bdist_rpm", "--spec-only"], cwd=sourcepath):
-      print("Error in bdist_rpm.", file=sys.stderr)
-      return 10
-    try:
-        requiresfile = glob.glob(os.path.join(td, "*", "*.egg-info", "requires.txt"))[0]
-        orgrequires = open(requiresfile).readlines()
-        requires = mod.gen_requires(orgrequires)
-    except IndexError:
-        orgrequires = []
-        requires = []
-    print("Original requires: %s" % orgrequires, file=sys.stderr)
-    print("Requires: %s" % requires, file=sys.stderr)
-    try:
-      findcfiles = subprocess.check_output(["find", td, "-name", "*.c", "-print0"])
-    except subprocess.CalledProcessError as e:
-      print("Error in finding C files: %s." % e, file=sys.stderr)
-      return 10
-    if findcfiles:
-      buildrequires = ["python%s-devel" % (sys.version_info.major, )]
-    else:
-      buildrequires = []
-    srcdir = os.path.join(td, '*', "setup.py")
-    srcsetups = glob.glob(srcdir)
-    if srcsetups:
-      try:
-        grepped = subprocess.check_output(["grep", "setuptools"] + srcsetups)
-        buildrequires.append("python%s-setuptools" % (sys.version_info.major, ))
-      except subprocess.CalledProcessError as e:
-        pass
-      try:
-        grepped = subprocess.check_output(["grep", "use_scm_version"] + srcsetups)
-        buildrequires.append("python%s-setuptools_scm" % (sys.version_info.major, ))
-      except subprocess.CalledProcessError as e:
-        pass
-    cfgdir = os.path.join(td, '*', "setup.cfg")
-    cfgsetups = glob.glob(cfgdir)
-    if cfgsetups:
-        buildrequires.extend(mod.gen_requires(get_buildrequires_from_setup_cfg(cfgsetups[0])))
-    print("BuildRequires: %s" % buildrequires, file=sys.stderr)
-    def rpm(*args):
-      return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
-    def rpmbuild(*args):
-      return run(["rpmbuild", "--define", "%%_topdir %s/RPM" % td] + list(args))
-    specfile = glob.glob(os.path.join(td, "*", "dist", "*.spec"))[0]
-    rpmsourcesdir = os.path.join(td, "RPM", "SOURCES")
-    if not os.path.isdir(rpmsourcesdir):
-        os.makedirs(rpmsourcesdir)
-    for patch in patches:
-        text = open(patch, "rb").read()
-        if ".unix2dos." in patch:
-          try:
-            text = text.replace("\n", "\r\n")
-          except TypeError:
-            text = text.replace(b"\n", b"\r\n")
-        open(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
-    remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
-    mangle_specfile(specfile, patches, epoch, archindependent)
-    if not rpmbuild("-bs", specfile):
-      print("Error constructing final source RPM.", file=sys.stderr)
-      sys.stderr.write(open(specfile).read())
-      return 14
-    srpm = glob.glob(os.path.join(td, "RPM", "SRPMS", "*.src.rpm"))[0]
-    if not skip_binary_rpms:
-      if not rpmbuild("--rebuild", srpm):
-        print("Error rebuilding final source RPM.", file=sys.stderr)
-        return 16
-      brpm = glob.glob(os.path.join(td, "RPM", "RPMS", "*", "*.rpm"))[0]
-      print("Package %s provides:" % os.path.basename(brpm), file=sys.stderr)
-      if not rpm("-qp", "--provides", brpm):
-        print("Error querying final binary RPM.", file=sys.stderr)
-        return 17
-      print("Package %s requires:" % os.path.basename(brpm), file=sys.stderr)
-      if not rpm("-qp", "--requires", brpm):
-        print("Error querying final binary RPM.", file=sys.stderr)
-        return 17
-    destfile = os.path.join(outputdir, os.path.basename(srpm))
-    if os.path.exists(destfile):
-      print("Error: not replacing %r" % destfile, file=sys.stderr)
-      return 19
-    shutil.move(srpm, destfile)
+        try:
+            requiresfile = glob.glob(
+                os.path.join(td, "*", "*.egg-info", "requires.txt")
+            )[0]
+            orgrequires = open(requiresfile).readlines()
+            requires = mod.gen_requires(orgrequires)
+        except IndexError:
+            orgrequires = []
+            requires = []
+        print("Original requires: %s" % orgrequires, file=sys.stderr)
+        print("Requires: %s" % requires, file=sys.stderr)
+        try:
+            findcfiles = subprocess.check_output(
+                ["find", td, "-name", "*.c", "-print0"]
+            )
+        except subprocess.CalledProcessError as e:
+            print("Error in finding C files: %s." % e, file=sys.stderr)
+            return 10
+        if findcfiles:
+            buildrequires = ["python%s-devel" % (sys.version_info.major,)]
+            archindependent = False
+        else:
+            buildrequires = []
+        srcdir = os.path.join(td, "*", "setup.py")
+        srcsetups = glob.glob(srcdir)
+        if srcsetups:
+            try:
+                grepped = subprocess.check_output(["grep", "setuptools"] + srcsetups)
+                buildrequires.append("python%s-setuptools" % (sys.version_info.major,))
+            except subprocess.CalledProcessError as e:
+                pass
+            try:
+                grepped = subprocess.check_output(
+                    ["grep", "use_scm_version"] + srcsetups
+                )
+                buildrequires.append(
+                    "python%s-setuptools_scm" % (sys.version_info.major,)
+                )
+            except subprocess.CalledProcessError as e:
+                pass
+        cfgdir = os.path.join(td, "*", "setup.cfg")
+        cfgsetups = glob.glob(cfgdir)
+        if cfgsetups:
+            buildrequires.extend(
+                mod.gen_requires(get_buildrequires_from_setup_cfg(cfgsetups[0]))
+            )
+        print("BuildRequires: %s" % buildrequires, file=sys.stderr)
+
+        def rpm(*args):
+            return run(["rpm", "--define", "%%_topdir %s/RPM" % td] + list(args))
+
+        def rpmbuild(*args):
+            return run(["rpmbuild", "--define", "%%_topdir %s/RPM" % td] + list(args))
+
+        specfile = glob.glob(os.path.join(td, "*", "dist", "*.spec"))[0]
+        rpmsourcesdir = os.path.join(td, "RPM", "SOURCES")
+        if not os.path.isdir(rpmsourcesdir):
+            os.makedirs(rpmsourcesdir)
+        for patch in patches:
+            text = open(patch, "rb").read()
+            if ".unix2dos." in patch:
+                try:
+                    text = text.replace("\n", "\r\n")
+                except TypeError:
+                    text = text.replace(b"\n", b"\r\n")
+            open(
+                os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb"
+            ).write(text)
+        remove_spaces_in_first_component(
+            path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path))
+        )
+        mangle_specfile(specfile, patches, epoch, archindependent)
+        if not rpmbuild("-bs", specfile):
+            print("Error constructing final source RPM.", file=sys.stderr)
+            sys.stderr.write(open(specfile).read())
+            return 14
+        srpm = glob.glob(os.path.join(td, "RPM", "SRPMS", "*.src.rpm"))[0]
+        if not skip_binary_rpms:
+            if not rpmbuild("--rebuild", srpm):
+                print("Error rebuilding final source RPM.", file=sys.stderr)
+                return 16
+            brpm = glob.glob(os.path.join(td, "RPM", "RPMS", "*", "*.rpm"))[0]
+            print("Package %s provides:" % os.path.basename(brpm), file=sys.stderr)
+            if not rpm("-qp", "--provides", brpm):
+                print("Error querying final binary RPM.", file=sys.stderr)
+                return 17
+            print("Package %s requires:" % os.path.basename(brpm), file=sys.stderr)
+            if not rpm("-qp", "--requires", brpm):
+                print("Error querying final binary RPM.", file=sys.stderr)
+                return 17
+        destfile = os.path.join(outputdir, os.path.basename(srpm))
+        if os.path.exists(destfile):
+            print("Error: not replacing %r" % destfile, file=sys.stderr)
+            return 19
+        shutil.move(srpm, destfile)
 
 
 def main():
-  parser = argparse.ArgumentParser(description="Turn downloaded PyPI packages into source RPMs")
-  parser.add_argument('--outputdir',
-    dest="outputdir",
-    help="Output directory to store the source RPMs into (must exist, default: current directory)",
-    action="store",
-    default=os.path.curdir,
-  )
-  parser.add_argument('--epoch',
-    dest="epoch",
-    help="Define an epoch for the package (to supplement the fact that bdist_rpm does not support it)",
-    action="store",
-    default="",
-  )
-  parser.add_argument('--keeptemp',
-    dest="keeptemp",
-    help="Print and keep the temporary work directory",
-    action="store_true",
-    default=False,
-  )
-  parser.add_argument('--no-mangle-name',
-    dest="nomanglename",
-    help="Avoid mangling the package name",
-    action="store_true",
-    default=False,
-  )
-  parser.add_argument('--no-binary-rpms',
-    dest="nobinaryrpms",
-    help="Skip the construction of binary RPMs",
-    action="store_true",
-    default=False,
-  )
-  parser.add_argument('--disable-debug',
-    dest="disabledebug",
-    help="Disable debug package generation",
-    action="store_true",
-    default=False,
-  )
-  parser.add_argument('--arch-dependent',
-    dest="archdependent",
-    help="Disable arch-independent package",
-    action="store_true",
-    default=False,
-  )
-  parser.add_argument('source',
-    metavar="SOURCE",
-    type=str,
-    nargs=1,
-    help="Source tarball, zip file or wheel",
-  )
-  parser.add_argument('patches',
-    metavar="PATCHES",
-    type=str,
-    nargs='*',
-    help="Plain text diff-formatted patches",
-  )
-  args = parser.parse_args()
-  ret = package(args.source[0], args.outputdir, args.keeptemp, args.nomanglename, args.nobinaryrpms, args.patches, args.epoch, args.disabledebug, not args.archdependent)
-  if ret:
-    sys.exit(ret)
+    parser = argparse.ArgumentParser(
+        description="Turn downloaded PyPI packages into source RPMs"
+    )
+    parser.add_argument(
+        "--outputdir",
+        dest="outputdir",
+        help="Output directory to store the source RPMs into (must exist, default: current directory)",
+        action="store",
+        default=os.path.curdir,
+    )
+    parser.add_argument(
+        "--epoch",
+        dest="epoch",
+        help="Define an epoch for the package (to supplement the fact that bdist_rpm does not support it)",
+        action="store",
+        default="",
+    )
+    parser.add_argument(
+        "--keeptemp",
+        dest="keeptemp",
+        help="Print and keep the temporary work directory",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--no-mangle-name",
+        dest="nomanglename",
+        help="Avoid mangling the package name",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--no-binary-rpms",
+        dest="nobinaryrpms",
+        help="Skip the construction of binary RPMs",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--disable-debug",
+        dest="disabledebug",
+        help="Disable debug package generation",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--arch-dependent",
+        dest="archdependent",
+        help="Disable arch-independent package",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "source",
+        metavar="SOURCE",
+        type=str,
+        nargs=1,
+        help="Source tarball, zip file or wheel",
+    )
+    parser.add_argument(
+        "patches",
+        metavar="PATCHES",
+        type=str,
+        nargs="*",
+        help="Plain text diff-formatted patches",
+    )
+    args = parser.parse_args()
+    ret = package(
+        args.source[0],
+        args.outputdir,
+        args.keeptemp,
+        args.nomanglename,
+        args.nobinaryrpms,
+        args.patches,
+        args.epoch,
+        args.disabledebug,
+        not args.archdependent,
+    )
+    if ret:
+        sys.exit(ret)
+
 
 if __name__ == "__main__":
-  os.environ["http_proxy"] = "http://127.0.0.1:1"
-  os.environ["https_proxy"] = "http://127.0.0.1:1"
-  main()
+    os.environ["http_proxy"] = "http://127.0.0.1:1"
+    os.environ["https_proxy"] = "http://127.0.0.1:1"
+    main()
