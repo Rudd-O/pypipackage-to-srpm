@@ -67,7 +67,7 @@ Summary:        @SUMMARY@
 License:        @LICENSE@
 Source:         %{url}/archive/v%{version}/%{original_name}-%{version}.tar.gz
 
-BuildArch:      noarch
+@ARCH@
 BuildRequires:  pyproject-rpm-macros
 
 %global _description %{expand:
@@ -123,7 +123,7 @@ fi
 """
 
 
-def mangle_specfile(path, patches, epoch):
+def mangle_specfile(path, patches, epoch, archindependent=True):
   data = {}
   descriptionmode = False
   with open(path, "r") as f:
@@ -167,6 +167,8 @@ def mangle_specfile(path, patches, epoch):
   tpl = template
   for k, v in data.items():
     tpl = tpl.replace("@%s@" % k.upper(), v)
+  if archindependent:
+    tpl = tpl.replace("@ARCH@", "BuildArch: noarch")
   tpl = "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()) + "\n\n" + tpl
   with open(path, "w") as f:
     f.write(tpl)
@@ -222,7 +224,7 @@ def get_buildrequires_from_setup_cfg(path_to_setup_cfg):
     return breqs
 
 
-def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None, epoch=None, disabledebug=False):
+def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpms=False, patches=None, epoch=None, disabledebug=False, archindependent=True):
   patches = [] if patches is None else patches
   if not os.path.isdir(outputdir):
     raise ValueError("%r must be a directory and must exist" % outputdir)
@@ -316,7 +318,7 @@ def package(path, outputdir, keeptemp, skip_mangling_name=False, skip_binary_rpm
             text = text.replace(b"\n", b"\r\n")
         open(os.path.join(td, "RPM", "SOURCES", os.path.basename(patch)), "wb").write(text)
     remove_spaces_in_first_component(path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path)))
-    mangle_specfile(specfile, patches, epoch)
+    mangle_specfile(specfile, patches, epoch, archindependent)
     if not rpmbuild("-bs", specfile):
       print("Error constructing final source RPM.", file=sys.stderr)
       sys.stderr.write(open(specfile).read())
@@ -380,6 +382,12 @@ def main():
     action="store_true",
     default=False,
   )
+  parser.add_argument('--arch-dependent',
+    dest="archdependent",
+    help="Disable arch-independent package",
+    action="store_true",
+    default=False,
+  )
   parser.add_argument('source',
     metavar="SOURCE",
     type=str,
@@ -393,7 +401,7 @@ def main():
     help="Plain text diff-formatted patches",
   )
   args = parser.parse_args()
-  ret = package(args.source[0], args.outputdir, args.keeptemp, args.nomanglename, args.nobinaryrpms, args.patches, args.epoch, args.disabledebug)
+  ret = package(args.source[0], args.outputdir, args.keeptemp, args.nomanglename, args.nobinaryrpms, args.patches, args.epoch, args.disabledebug, not args.archdependent)
   if ret:
     sys.exit(ret)
 
