@@ -117,8 +117,7 @@ fi
 
 %files -n python3-%{dashed_name} -f %{pyproject_files}
 %doc README*
-%{_bindir}/*
-
+@BINDIR@
 
 %changelog
 * Thu Jun 16 2022 Manuel Amador <rudd-o@rudd-o.com> 0.1.0-1
@@ -126,7 +125,13 @@ fi
 """
 
 
-def mangle_specfile(path, patches, epoch, archindependent=True):
+def mangle_specfile(
+    path,
+    patches,
+    epoch,
+    archindependent=True,
+    glob_bindir=False,
+):
     data = {}
     descriptionmode = False
     with open(path, "r") as f:
@@ -179,6 +184,7 @@ def mangle_specfile(path, patches, epoch, archindependent=True):
         if not data["original_name"].startswith("python-")
         else "%%pyproject_save_files %s" % data["original_name"][7:],
     )
+    tpl = tpl.replace("@BINDIR@", "%{_bindir}/*" if glob_bindir else "")
     tpl = (
         "\n".join("%%define %s %s" % (k, v) for k, v in defines.items()) + "\n\n" + tpl
     )
@@ -243,7 +249,7 @@ def package(
     skip_binary_rpms=False,
     patches=None,
     epoch=None,
-    disabledebug=False,
+    glob_bindir=False,
     archindependent=True,
 ):
     patches = [] if patches is None else patches
@@ -359,7 +365,7 @@ def package(
         remove_spaces_in_first_component(
             path, os.path.join(td, "RPM", "SOURCES", os.path.basename(path))
         )
-        mangle_specfile(specfile, patches, epoch, archindependent)
+        mangle_specfile(specfile, patches, epoch, archindependent, glob_bindir)
         if not rpmbuild("-bs", specfile):
             print("Error constructing final source RPM.", file=sys.stderr)
             sys.stderr.write(open(specfile).read())
@@ -425,9 +431,9 @@ def main():
         default=False,
     )
     parser.add_argument(
-        "--disable-debug",
-        dest="disabledebug",
-        help="Disable debug package generation",
+        "--glob-bindir",
+        dest="glob_bindir",
+        help="Include all files installed in bindir too",
         action="store_true",
         default=False,
     )
@@ -461,7 +467,7 @@ def main():
         args.nobinaryrpms,
         args.patches,
         args.epoch,
-        args.disabledebug,
+        args.glob_bindir,
         not args.archdependent,
     )
     if ret:
