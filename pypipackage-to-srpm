@@ -173,7 +173,9 @@ def mangle_specfile(
         data["original_name"] = defines["name"]
         data["dashed_name"] = defines["name"].replace("_", "-")
         data["module_to_save"] = (
-            module_to_save if module_to_save else data["original_name"]
+            module_to_save
+            if module_to_save
+            else data["original_name"].replace("-", "_")
         )
         del defines["name"]
     else:
