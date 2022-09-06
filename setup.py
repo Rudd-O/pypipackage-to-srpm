@@ -41,5 +41,4 @@ setup(
 	classifiers = classifiers,
 	scripts = ["pypipackage-to-srpm", "pip-discover-deps"],
 	keywords = "packaging",
-	zip_safe=False,
 )
