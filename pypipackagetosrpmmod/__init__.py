@@ -1,6 +1,6 @@
 import sys
 
-__version__ = "0.1.11"
+__version__ = "0.1.12"
 
 
 def mangle_name(name):
@@ -46,7 +46,7 @@ def gen_requires(in_reqs):
         toks = l.split(",")
         pkg = None
         for tok in toks:
-            seps = [">=", "<=", ">", "<", "==", "~=", None]
+            seps = [">=", "<=", ">", "<", "==", "~=", "!=", None]
             ver = None
             for sep in seps:
                 if sep is None:
