@@ -20,6 +20,8 @@ def mangle_name(name):
         name = "werkzeug"
     if name == "Babel":
         name = "babel"
+    if name == "pyxdg":
+        name = "python%s-pyxdg" % (sys.version_info.major,)
     if name == "PyGObject":
         name = "python%s-gobject" % (sys.version_info.major,)
     if name.startswith("python"):
